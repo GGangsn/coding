@@ -1,4 +1,4 @@
-# 🐦 터틀로 만든 플래피 버드 게임 (복원 버전)
+# 🐦 터틀로 만든 플래피 버드 게임 (최고기록 영구 저장 버전)
 # 조작: 스페이스=점프, P=일시정지, R=재시작, ESC=종료
 
 import turtle as t
@@ -6,7 +6,7 @@ import random
 import time
 
 # ---------------------------
-# ⚙️ 게임 기본 설정 (원래 비율로 복원)
+# ⚙️ 게임 기본 설정 (원래 비율)
 # ---------------------------
 WIDTH, HEIGHT = 420, 700
 GROUND_H = 90
@@ -14,14 +14,15 @@ PIPE_W = 70
 PIPE_GAP = 180
 PIPE_SPEED = 3.6
 SPAWN_MS = 1600
-INITIAL_SPAWN_MS = 1300   # 두 번째 파이프 간격을 더 넓힘   # 두 번째 파이프 간격 여유롭게 조정
+INITIAL_SPAWN_MS = 1300   # 두 번째 파이프 간격 더 넓게
 MAX_GAP_DELTA = 140
-GRAVITY = -0.65  # 더 빠르게 하강하도록 중력 증가
+GRAVITY = -0.65           # 더 빠르게 하강
 FLAP_V = 8.5
-MAX_FALL = -14   # 최대 낙하 속도도 소폭 증가
+MAX_FALL = -14            # 최대 낙하 속도
 FPS = 50
 FRAME_MS = int(1000 / FPS)
 BIRD_R = 16
+SAVE_FILE = "flappy_best.txt"  # ✅ 최고기록 저장 파일
 
 # ---------------------------
 # 🧠 상태 변수
@@ -43,7 +44,7 @@ running = True
 paused = False
 alive = True
 score = 0
-best = 0
+best = 0              # ✅ 실행 시 파일에서 로드
 last_gap_y = None
 time_last_spawn = 0
 
@@ -51,11 +52,41 @@ bird = {"x": -WIDTH * 0.25, "y": 80, "vy": 0.0}
 pipes = []
 
 # ---------------------------
+# 💾 최고기록 저장/로드
+# ---------------------------
+
+def load_best():
+    global best
+    try:
+        with open(SAVE_FILE, "r", encoding="utf-8") as f:
+            txt = f.read().strip()
+            best = int(txt) if txt else 0
+    except Exception:
+        best = 0
+
+
+def save_best():
+    try:
+        with open(SAVE_FILE, "w", encoding="utf-8") as f:
+            f.write(str(best))
+    except Exception:
+        pass
+
+
+def update_best_if_needed():
+    """현재 점수가 최고기록보다 높으면 갱신하고 파일에 저장."""
+    global best
+    if score > best:
+        best = score
+        save_best()
+
+# ---------------------------
 # 🕹️ 제어 함수
 # ---------------------------
 
 def now_ms():
     return int(time.time() * 1000)
+
 
 def reset_game():
     global pipes, bird, score, alive, paused, time_last_spawn, last_gap_y
@@ -69,7 +100,9 @@ def reset_game():
 
     # 🔥 게임 시작 시 첫 파이프 바로 생성
     spawn_pipe()
+    # 두 번째 파이프는 빠르게 등장
     time_last_spawn = now_ms() - (SPAWN_MS - INITIAL_SPAWN_MS)
+
 
 def flap():
     global bird
@@ -77,20 +110,25 @@ def flap():
         return
     bird["vy"] = FLAP_V
 
+
 def toggle_pause():
     global paused
     if alive:
         paused = not paused
 
+
 def restart():
-    global best
+    # 사망 후 재시작 시 최고기록 반영
     if not alive:
-        best = max(best, score)
+        update_best_if_needed()
     reset_game()
+
 
 def quit_game():
     global running
     running = False
+    # 창 닫기 전에 최고기록 저장
+    update_best_if_needed()
 
 # ---------------------------
 # 🌿 파이프 함수
@@ -111,6 +149,7 @@ def spawn_pipe():
         gap_y = max(lower, min(upper, rnd))
     pipes.append({"x": WIDTH//2 + 40, "gap_y": gap_y, "passed": False})
     last_gap_y = gap_y
+
 
 def update_pipes():
     for p in pipes:
@@ -135,7 +174,10 @@ def update_bird():
         bird["vy"] = 0
     if bird["y"] - BIRD_R < ground_y:
         bird["y"] = ground_y + BIRD_R
-        alive = False
+        if alive:
+            alive = False
+            update_best_if_needed()
+
 
 def check_collisions_and_score():
     global alive, score
@@ -155,7 +197,9 @@ def check_collisions_and_score():
         hit_top = in_x and (by + BIRD_R > gap_top)
         hit_bottom = in_x and (by - BIRD_R < gap_bottom)
         if hit_top or hit_bottom:
-            alive = False
+            if alive:
+                alive = False
+                update_best_if_needed()
             return
 
 # ---------------------------
@@ -170,10 +214,12 @@ def draw_rect(x, y, w, h, color):
         pen.forward(w); pen.left(90); pen.forward(h); pen.left(90)
     pen.end_fill(); pen.up()
 
+
 def draw_circle(x, y, r, color):
     pen.up(); pen.goto(x, y - r)
     pen.setheading(0); pen.color(color)
     pen.down(); pen.begin_fill(); pen.circle(r); pen.end_fill(); pen.up()
+
 
 def update_hud():
     banner = None
@@ -181,7 +227,7 @@ def update_hud():
         banner = (
             "GAME OVER\n"
             "R 키로 재시작\n"
-            f"점수 {score}   최고기록 {max(best, score)}"
+            f"점수 {score}   최고기록 {best}"
         )
     elif paused and alive:
         banner = "일시정지"
@@ -190,12 +236,17 @@ def update_hud():
     hud.goto(0, HEIGHT/2 - 60)
     hud.color("white")
     hud.write(str(score), align="center", font=("Arial", 36, "bold"))
+    # 상단에 BEST도 항상 표시 (가벼움)
+    hud.goto(0, HEIGHT/2 - 92)
+    hud.write(f"BEST: {best}", align="center", font=("Arial", 16, "normal"))
+
     if banner:
         hud.goto(0, 40)
         for line in banner.split("\n"):
             style = ("Arial", 20 if line == "일시정지" else 16, "bold" if "GAME OVER" in line else "normal")
             hud.write(line, align="center", font=style)
             hud.sety(hud.ycor() - 28)
+
 
 def draw_scene():
     pen.clear()
@@ -254,6 +305,7 @@ screen.onkeypress(quit_game, "Escape")
 # ---------------------------
 # 🚀 시작
 # ---------------------------
+load_best()   # ✅ 실행 시 최고기록 로드
 reset_game()
 loop()
 screen.mainloop()
